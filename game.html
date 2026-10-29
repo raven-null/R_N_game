@@ -289,6 +289,7 @@ let net = null;         // 传输层
 let room = null;        // 当前房间码
 let netState = 'offline';
 let selfDead = false;
+let lastPeers = [];     // 最近一次房间成员快照，用来组装分跑道
 
 const cloudMode = supabaseConfigured();
 netBadge.textContent = cloudMode
@@ -387,7 +388,7 @@ function joinRoom(code) {
   race = createRace({
     net,
     me,
-    onPeers: renderBoard,
+    onPeers: (peers) => { lastPeers = peers; renderBoard(peers); },
     onEvent: onRaceEvent,
   });
   race.join();
@@ -417,6 +418,8 @@ function leaveRoom({ silent = false } = {}) {
   net = null;
   room = null;
   netState = 'offline';
+  lastPeers = [];
+  game.setLanes(null);
   boardEl.hidden = true;
   boardEl.innerHTML = '';
   $('shareBox').hidden = true;
@@ -593,8 +596,28 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ---------------- 主循环 ----------------
+// 分跑道最多显示 4 条：再多人每条道就窄到看不清了，其余看下面的排行榜
+const MAX_LANES = 4;
+
+function buildLanes(peers) {
+  const withSelf = (p) => (p.isMe
+    ? { ...p, dist: game.dist, score: game.score, y: game.player.y, alive: game.state !== DEAD }
+    : p);
+
+  if (peers.length <= MAX_LANES) return peers.map(withSelf);
+
+  // 已经按进度排序，取前三名 + 自己（自己落后时顶掉第四名）
+  const shown = peers.slice(0, MAX_LANES);
+  if (!shown.some((p) => p.isMe)) {
+    const me0 = peers.find((p) => p.isMe);
+    if (me0) shown[MAX_LANES - 1] = me0;
+  }
+  return shown.map(withSelf);
+}
+
 function loop(t) {
   game.frame(t);
+
   if (race) {
     // 不管在等待厅、比赛中还是已出局，都要持续保活；
     // 只在比赛时才发包的话，等待厅里 6 秒就会被对方判掉线。
@@ -602,8 +625,17 @@ function loop(t) {
       dist: game.dist,
       score: game.score,
       alive: game.state !== DEAD,
+      y: game.player.y,
     });
+
+    // 房间里不止一个人时切成分跑道画面，能看到所有对手在跳
+    if (lastPeers.length > 1) {
+      game.setLanes(buildLanes(lastPeers));
+    } else {
+      game.setLanes(null);
+    }
   }
+
   requestAnimationFrame(loop);
 }
 

@@ -69,6 +69,7 @@ export function createGame(canvas) {
   let deadAt = 0;
   let deathPulse = 0;
   let countdownUntil = 0;
+  let lanes = null;   // 多人分跑道数据；null 或只有自己时用普通单机画面
 
   const player = { y: GROUND - PLAYER_H, vy: 0, onGround: true, tick: 0 };
 
@@ -179,46 +180,59 @@ export function createGame(canvas) {
     }
   }
 
-  function drawPlayer() {
-    const x = PLAYER_X;
-    const y = player.y | 0;
-
-    rect(x + 3, y, 6, 2, C.player);
-    rect(x + 2, y + 2, 8, 4, C.player);
-    rect(x + 2, y + 6, 8, 4, C.playerDim);
+  // 可复用的角色绘制：多人分跑道时要用不同颜色/位置画一堆角色
+  function drawRunner(sx, sy, main, dim, onGround, tickVal, airborne) {
+    sx = sx | 0; sy = sy | 0;
+    rect(sx + 3, sy, 6, 2, main);
+    rect(sx + 2, sy + 2, 8, 4, main);
+    rect(sx + 2, sy + 6, 8, 4, dim);
 
     // 眼睛（朝向跑动方向）
-    rect(x + 4, y + 3, 2, 2, C.eye);
-    rect(x + 8, y + 3, 2, 2, C.eye);
+    rect(sx + 4, sy + 3, 2, 2, C.eye);
+    rect(sx + 8, sy + 3, 2, 2, C.eye);
 
     // 腿
-    if (!player.onGround) {
-      rect(x + 3, y + 10, 3, 4, C.playerDim);
-      rect(x + 7, y + 10, 3, 3, C.playerDim);
-    } else if ((player.tick | 0) % 2) {
-      rect(x + 2, y + 10, 3, 4, C.playerDim);
-      rect(x + 7, y + 10, 3, 4, C.playerDim);
+    if (!onGround) {
+      rect(sx + 3, sy + 10, 3, 4, dim);
+      rect(sx + 7, sy + 10, 3, 3, dim);
+    } else if ((tickVal | 0) % 2) {
+      rect(sx + 2, sy + 10, 3, 4, dim);
+      rect(sx + 7, sy + 10, 3, 4, dim);
     } else {
-      rect(x + 3, y + 10, 3, 3, C.playerDim);
-      rect(x + 6, y + 10, 3, 4, C.playerDim);
+      rect(sx + 3, sy + 10, 3, 3, dim);
+      rect(sx + 6, sy + 10, 3, 4, dim);
     }
 
-    if (!player.onGround && player.vy > 0) {
-      rect(x + 1, y + 13, 2, 1, 'rgba(255,255,255,.18)');
+    if (airborne) {
+      rect(sx + 1, sy + 13, 2, 1, 'rgba(255,255,255,.18)');
+    }
+  }
+
+  function drawPlayer() {
+    drawRunner(
+      PLAYER_X, player.y, C.player, C.playerDim,
+      player.onGround, player.tick,
+      !player.onGround && player.vy > 0
+    );
+  }
+
+  // 障碍物绘制：按给定进度采样，groundY/scale 用于分跑道时压缩高度
+  function drawSpikes(distValue, groundY, scale) {
+    for (const o of track.obstacles) {
+      const sx = o.worldX - distValue;
+      if (sx > W + 20 || sx + o.w < -20) continue;
+      const oh = Math.max(2, Math.round(o.h * scale));
+      for (let r = 0; r < oh; r++) {
+        const ratio = (r + 1) / oh;
+        const half = Math.max(1, Math.round((ratio * o.w) / 2));
+        rect(sx + (o.w / 2 - half), groundY - oh + r, half * 2, 1,
+          r % 4 === 0 ? C.spikeDim : C.spike);
+      }
     }
   }
 
   function drawObstacles() {
-    for (const o of track.obstacles) {
-      const sx = o.worldX - dist;
-      if (sx > W + 20 || sx + o.w < -20) continue;
-      for (let r = 0; r < o.h; r++) {
-        const ratio = (r + 1) / o.h;
-        const half = Math.max(1, Math.round((ratio * o.w) / 2));
-        rect(sx + (o.w / 2 - half), GROUND - o.h + r, half * 2, 1,
-          r % 4 === 0 ? C.spikeDim : C.spike);
-      }
-    }
+    drawSpikes(dist, GROUND, 1);
   }
 
   // ---------- 逻辑 ----------
@@ -314,6 +328,95 @@ export function createGame(canvas) {
   }
 
   // ---------- 对外 ----------
+  // 把 #rrggbb 压暗，用于给其他玩家配一个"腿色"
+  function darken(hex, f = 0.7) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return hex || '#6ea8ff';
+    const v = parseInt(m[1], 16);
+    const r = Math.round(((v >> 16) & 255) * f);
+    const g = Math.round(((v >> 8) & 255) * f);
+    const b = Math.round((v & 255) * f);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function renderSolo(t) {
+    drawSky(t);
+    drawClouds();
+    drawHills();
+    drawObstacles();
+    drawPlayer();
+    drawGround();
+    drawDigits(String(score).padStart(3, '0'), 7, 7, C.text);
+  }
+
+  // 多人：纵向切成若干条跑道，每人一条，各自独立滚动，能看到所有人在跳
+  function renderLanes(t) {
+    const n = lanes.length;
+    const laneH = H / n;
+
+    // 障碍物要按最靠前的玩家生成，否则领先者的前方是空的
+    let maxDist = dist;
+    for (const l of lanes) {
+      if (typeof l.dist === 'number' && l.dist > maxDist) maxDist = l.dist;
+    }
+    track.ensure(maxDist);
+
+    const baseY = GROUND - PLAYER_H;
+
+    for (let i = 0; i < n; i++) {
+      const lane = lanes[i];
+      const top = Math.round(i * laneH);
+      const laneBottom = Math.round((i + 1) * laneH);
+      const groundY = laneBottom - 7;
+      // 跑道变窄时把跳跃高度按比例压缩，保证角色不会画出界
+      const scale = Math.min(1, Math.max(0.25, (laneH - 22) / 72));
+
+      rect(0, top, W, laneH, i % 2 === 0 ? '#0a1024' : '#0e152c');
+
+      // 地面
+      rect(0, groundY, W, Math.max(1, laneBottom - groundY), C.ground);
+      rect(0, groundY, W, 1, C.groundTop);
+
+      // 障碍物（按该玩家自己的进度采样同一条确定性赛道）
+      drawSpikes(typeof lane.dist === 'number' ? lane.dist : 0, groundY, scale);
+
+      // 角色
+      const laneY = typeof lane.y === 'number' ? lane.y : baseY;
+      const lift = Math.max(0, baseY - laneY) * scale;
+      const runnerY = groundY - PLAYER_H - lift;
+      const airborne = lift > 0.6;
+
+      const mainColor = lane.isMe ? C.player : (lane.color || '#6ea8ff');
+      const dimColor = lane.isMe ? C.playerDim : darken(lane.color);
+
+      // 出局的人画成半透明灰，但仍留在跑道上
+      ctx.globalAlpha = lane.alive === false ? 0.26 : 1;
+      drawRunner(
+        PLAYER_X, runnerY,
+        lane.alive === false ? '#8b9bb8' : mainColor,
+        lane.alive === false ? '#5f6f8c' : dimColor,
+        !airborne, (t * 0.009) | 0, airborne
+      );
+      ctx.globalAlpha = 1;
+
+      // 自己的跑道加个框，一眼认出来
+      if (lane.isMe) {
+        ctx.strokeStyle = 'rgba(255,184,107,.55)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0.5, top + 0.5, W - 1, laneH - 1);
+      }
+
+      // 分数贴在跑道右上角
+      drawDigits(
+        String(lane.score | 0).padStart(3, '0'),
+        W - 20, top + 4,
+        lane.isMe ? C.text : '#7d8db0'
+      );
+    }
+
+    drawDigits(String(score).padStart(3, '0'), 7, 7, C.text);
+  }
+
   const api = {
     get state() { return state; },
     get score() { return score; },
@@ -343,6 +446,10 @@ export function createGame(canvas) {
 
     // 网络校正：别人先到终点/自己已死时强制结束
     kill() { die(); },
+    // 传入多人跑道数据（含自己）。传 null 或单元素时回到普通单机画面。
+    setLanes(v) {
+      lanes = (Array.isArray(v) && v.length > 1) ? v : null;
+    },
     setIdle(seed) {
       resetWorld(seed || 'idle');
       targetScore = 0;
@@ -377,19 +484,15 @@ export function createGame(canvas) {
     },
 
     render(t) {
-      drawSky(t);
-      drawClouds();
-      drawHills();
-      drawObstacles();
-      drawPlayer();
-      drawGround();
-
-      drawDigits(String(score).padStart(3, '0'), 7, 7, C.text);
+      if (lanes && lanes.length > 1) {
+        renderLanes(t);
+      } else {
+        renderSolo(t);
+      }
 
       const left = Math.max(0, countdownUntil - performance.now());
       if (state === COUNTDOWN) {
-        const n = Math.ceil(left / 1000);
-        const s = String(n);
+        const s = String(Math.ceil(left / 1000));
         drawDigits(s, W / 2 - (s.length * 4) / 2, 62, '#ffe9a8');
       }
 

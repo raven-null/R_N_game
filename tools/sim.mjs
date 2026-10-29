@@ -24,14 +24,24 @@ function test(name, fn) {
 // ---------- canvas mock ----------
 function mockCanvas() {
   const gradient = { addColorStop() {} };
+  const stats = { fillRect: 0, strokeRect: 0, minY: Infinity, maxY: -Infinity };
   const ctx = {
     imageSmoothingEnabled: true,
     fillStyle: '#000',
+    strokeStyle: '#000',
+    lineWidth: 1,
     globalAlpha: 1,
-    fillRect() {},
+    fillRect(x, y, w, h) {
+      stats.fillRect++;
+      if (typeof y === 'number' && typeof h === 'number') {
+        stats.minY = Math.min(stats.minY, y);
+        stats.maxY = Math.max(stats.maxY, y + h);
+      }
+    },
+    strokeRect() { stats.strokeRect++; },
     createLinearGradient() { return gradient; },
   };
-  return { width: 320, height: 180, getContext: () => ctx };
+  return { width: 320, height: 180, getContext: () => ctx, __stats: stats };
 }
 
 console.log('\n[1] 赛道确定性');
@@ -167,7 +177,75 @@ test('物理与帧率无关（30fps 和 144fps 结果一致）', () => {
   PASS(`30fps=${a} 分 / 144fps=${b} 分`);
 });
 
-console.log('\n[4] 联机同步（消息总线模拟两个玩家）');
+console.log('\n[4] 多人分跑道渲染');
+test('分跑道模式下能正常渲染，且画出 3 个角色', () => {
+  const canvas = mockCanvas();
+  const game = createGame(canvas);
+  game.start('LANE');
+
+  const lanes = [
+    { id: 'a', name: '小明', color: '#ffb86b', dist: 0, score: 0, y: GROUND - PLAYER_H, alive: true, isMe: true },
+    { id: 'b', name: '小红', color: '#6ea8ff', dist: 300, score: 30, y: GROUND - PLAYER_H - 40, alive: true, isMe: false },
+    { id: 'c', name: '小刚', color: '#38e8c8', dist: 150, score: 15, y: GROUND - PLAYER_H, alive: false, isMe: false },
+  ];
+  game.setLanes(lanes);
+
+  const stats = canvas.__stats;
+  stats.fillRect = 0;
+  stats.strokeRect = 0;
+
+  // 跑几帧确认不抛错
+  let t = 0;
+  for (let i = 0; i < 10; i++) { t += 16.7; game.frame(t); }
+
+  assert.ok(stats.fillRect > 100, `分跑道渲染没有画出足够图元（fillRect=${stats.fillRect}）`);
+  assert.ok(stats.strokeRect >= 1, '自己的跑道应该有高亮边框');
+
+  // 关掉分跑道后回到单机画面
+  game.setLanes(null);
+  stats.fillRect = 0;
+  t += 16.7;
+  game.frame(t);
+  assert.ok(stats.fillRect > 0, 'setLanes(null) 后应该回到单机渲染');
+  PASS('分跑道 / 单机切换正常');
+});
+
+test('8 人满员分跑道时，所有图元都不画出画布', () => {
+  const canvas = mockCanvas();
+  const game = createGame(canvas);
+  game.start('LANE8');
+
+  const lanes = [];
+  for (let i = 0; i < 8; i++) {
+    lanes.push({
+      id: 'p' + i,
+      name: '玩家' + i,
+      color: ['#6ea8ff', '#ffb86b', '#38e8c8', '#a678ff', '#ff7b9c', '#ffe066', '#7ef07e', '#ff9f5a'][i],
+      dist: i * 400,
+      score: i * 40,
+      // 交替：在地面 / 跳到最高点
+      y: i % 2 === 0 ? GROUND - PLAYER_H : GROUND - PLAYER_H - 69,
+      alive: i !== 7,
+      isMe: i === 0,
+    });
+  }
+  game.setLanes(lanes);
+
+  const stats = canvas.__stats;
+  stats.fillRect = 0;
+  stats.minY = Infinity;
+  stats.maxY = -Infinity;
+
+  let t = 0;
+  for (let i = 0; i < 5; i++) { t += 16.7; game.frame(t); }
+
+  assert.ok(stats.fillRect > 200, `8 人渲染图元太少（${stats.fillRect}）`);
+  assert.ok(stats.maxY <= 180, `有图元画到画布下方（maxY=${stats.maxY}）`);
+  assert.ok(stats.minY >= 0, `有图元画到画布上方（minY=${stats.minY}）`);
+});
+
+
+console.log('\n[5] 联机同步（消息总线模拟两个玩家）');
 test('两人进房、开局、进度互相同步', () => {
   const subs = [];
   const bus = {

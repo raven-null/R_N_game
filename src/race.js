@@ -5,8 +5,9 @@
 // 而赛道本身由统一的 seed 决定，所以比赛依然公平。
 
 import { makeSeedString, makeId } from './rng.js';
+import { GROUND, PLAYER_H } from './track.js';
 
-const POS_INTERVAL_RACE = 120;   // 比赛中的进度广播
+const POS_INTERVAL_RACE = 90;    // 比赛中的进度广播（也决定对手动作的流畅度）
 const POS_INTERVAL_IDLE = 1500;  // 等待厅/已出局时的保活心跳（必须有，否则会被判掉线）
 const HELLO_INTERVAL = 5000;     // 定期重新打招呼，用于误判掉线后的自愈
 const PEER_TIMEOUT = 12000;      // 多久没动静算掉线（留够网络抖动的余量）
@@ -87,6 +88,8 @@ export function createRace({ net, me, onPeers, onEvent }) {
           dist: raw.dist | 0,
           score: raw.score | 0,
           alive: raw.alive !== false,
+          // 跳跃高度也一起同步，别人才能在分跑道里看到对手的角色在跳
+          y: typeof raw.y === 'number' ? raw.y : undefined,
           status: raw.alive === false ? 'dead' : 'running',
         });
         if (p) publish();
@@ -184,12 +187,13 @@ export function createRace({ net, me, onPeers, onEvent }) {
     // 每帧调用，内部节流。
     // 注意：等待厅里也必须持续发包，否则双方都收不到对方的消息，
     // 超时后会被一起清出房间 —— 这就是"进房后过一会全断了"的原因。
-    updateLocal({ dist, score, alive }) {
+    updateLocal({ dist, score, alive, y }) {
       const me0 = peers.get(me.id);
       if (me0) {
         me0.dist = dist | 0;
         me0.score = score | 0;
         me0.alive = alive !== false;
+        if (typeof y === 'number') me0.y = y;
         me0.lastSeen = Date.now();
       }
       if (phase === PHASE_IDLE) return;
@@ -198,7 +202,14 @@ export function createRace({ net, me, onPeers, onEvent }) {
       const interval = phase === PHASE_RACING ? POS_INTERVAL_RACE : POS_INTERVAL_IDLE;
       if (now - lastPosSent >= interval) {
         lastPosSent = now;
-        net.send({ t: 'pos', from: me.id, dist: dist | 0, score: score | 0, alive: alive !== false });
+        net.send({
+          t: 'pos',
+          from: me.id,
+          dist: dist | 0,
+          score: score | 0,
+          alive: alive !== false,
+          y: Math.round(typeof y === 'number' ? y : GROUND - PLAYER_H),
+        });
         // 只有比赛中的进度变化才值得重绘，等待厅心跳不刷新界面
         if (phase === PHASE_RACING) publish();
       }
