@@ -11,5 +11,5 @@
 // 千万不要把 SECRET key（sb_secret_...）或 service_role key 填进来。
 // ============================================================
 
-export const SUPABASE_URL = 'https://hzpbiloaclkxgbseqaky.supabase.co';
-export const SUPABASE_ANON_KEY = 'sb_publishable_xTSDwLIilE-yz57fHNbR9A_24g87tIk';
+export const SUPABASE_URL = 'https://qvzgvyyydeovcuxixzro.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_VW-SRwvWyOC_5fD5ps0epA_g-MOXCfF';
