@@ -595,8 +595,14 @@ window.addEventListener('beforeunload', () => {
 // ---------------- 主循环 ----------------
 function loop(t) {
   game.frame(t);
-  if (game.state === RUNNING && race) {
-    race.updateLocal({ dist: game.dist, score: game.score, alive: true });
+  if (race) {
+    // 不管在等待厅、比赛中还是已出局，都要持续保活；
+    // 只在比赛时才发包的话，等待厅里 6 秒就会被对方判掉线。
+    race.updateLocal({
+      dist: game.dist,
+      score: game.score,
+      alive: game.state !== DEAD,
+    });
   }
   requestAnimationFrame(loop);
 }

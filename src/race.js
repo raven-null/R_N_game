@@ -6,8 +6,10 @@
 
 import { makeSeedString, makeId } from './rng.js';
 
-const POS_INTERVAL = 120;   // 进度广播节流
-const PEER_TIMEOUT = 6000;  // 多久没动静算掉线
+const POS_INTERVAL_RACE = 120;   // 比赛中的进度广播
+const POS_INTERVAL_IDLE = 1500;  // 等待厅/已出局时的保活心跳（必须有，否则会被判掉线）
+const HELLO_INTERVAL = 5000;     // 定期重新打招呼，用于误判掉线后的自愈
+const PEER_TIMEOUT = 12000;      // 多久没动静算掉线（留够网络抖动的余量）
 const MAX_PLAYERS = 8;
 
 export const PHASE_IDLE = 'idle';
@@ -24,6 +26,7 @@ export function createRace({ net, me, onPeers, onEvent }) {
   let lastTarget = 0;
   let sweepTimer = null;
   let greetTimer = null;
+  let keepaliveTimer = null;
 
   function snapshot() {
     const list = [...peers.values()].sort((a, b) => (b.dist - a.dist) || a.joinedAt - b.joinedAt);
@@ -155,6 +158,12 @@ export function createRace({ net, me, onPeers, onEvent }) {
         net.send({ t: 'hello', from: me.id, name: me.name, color: me.color });
         if (++greet >= 3) { clearInterval(greetTimer); greetTimer = null; }
       }, 700);
+
+      // 长期保活：万一因为网络抖动被对方误判掉线，靠定期 hello 自动恢复到名单里
+      keepaliveTimer = setInterval(() => {
+        if (peers.size === 0) return;
+        net.send({ t: 'hello', from: me.id, name: me.name, color: me.color });
+      }, HELLO_INTERVAL);
     },
 
     handle,
@@ -172,7 +181,9 @@ export function createRace({ net, me, onPeers, onEvent }) {
       if (onEvent) onEvent('start', { seed, target, self: true });
     },
 
-    // 每帧调用，内部节流
+    // 每帧调用，内部节流。
+    // 注意：等待厅里也必须持续发包，否则双方都收不到对方的消息，
+    // 超时后会被一起清出房间 —— 这就是"进房后过一会全断了"的原因。
     updateLocal({ dist, score, alive }) {
       const me0 = peers.get(me.id);
       if (me0) {
@@ -181,11 +192,15 @@ export function createRace({ net, me, onPeers, onEvent }) {
         me0.alive = alive !== false;
         me0.lastSeen = Date.now();
       }
+      if (phase === PHASE_IDLE) return;
+
       const now = Date.now();
-      if (phase === PHASE_RACING && now - lastPosSent >= POS_INTERVAL) {
+      const interval = phase === PHASE_RACING ? POS_INTERVAL_RACE : POS_INTERVAL_IDLE;
+      if (now - lastPosSent >= interval) {
         lastPosSent = now;
         net.send({ t: 'pos', from: me.id, dist: dist | 0, score: score | 0, alive: alive !== false });
-        publish();
+        // 只有比赛中的进度变化才值得重绘，等待厅心跳不刷新界面
+        if (phase === PHASE_RACING) publish();
       }
     },
 
@@ -213,6 +228,7 @@ export function createRace({ net, me, onPeers, onEvent }) {
     leave() {
       clearInterval(sweepTimer);
       if (greetTimer) { clearInterval(greetTimer); greetTimer = null; }
+      if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; }
       net.send({ t: 'bye', from: me.id });
       peers.clear();
       phase = PHASE_IDLE;
