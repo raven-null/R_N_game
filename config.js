@@ -4,15 +4,12 @@
 // 留空 = 只用「本地联机」模式（同一浏览器的多个窗口/标签页互连，
 //        适合开发调试和同机演示，不需要任何后端）。
 //
-// 想跨设备、跨网络真对战，就在下面填上你自己的 Supabase 项目：
-//   1. 去 https://supabase.com 建一个免费项目
-//   2. Project Settings -> API 里复制 Project URL 和 anon public key
-//   3. 把两个值填到下面，再到 SQL Editor 执行 README 里的那段 SQL
-//   4. 重新部署到 Netlify
+// 下面填的是 Supabase 项目的公开信息，可以安全地放进前端代码：
+//   Project URL          —— https://<项目ref>.supabase.co
+//   Publishable key      —— sb_publishable_...（旧项目是 anon 的 JWT key，等价）
 //
-// anon key 是设计给浏览器公开使用的，可以安全地放在前端代码里。
-// 千万不要把 service_role key 填进来。
+// 千万不要把 SECRET key（sb_secret_...）或 service_role key 填进来。
 // ============================================================
 
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+export const SUPABASE_URL = 'https://hzpbiloaclkxgbseqaky.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_xTSDwLIilE-yz57fHNbR9A_24g87tIk';

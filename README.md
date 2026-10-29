@@ -14,8 +14,9 @@ src/game.js     物理 + 碰撞 + 像素渲染
 src/net.js      实时传输层（本地 BroadcastChannel / Supabase Realtime）
 src/race.js     房间逻辑：成员、进度、开局、掉线清理
 tools/serve.mjs 本地预览服务器
-tools/sim.mjs   无浏览器仿真测试（赛道/物理/联机）
+tools/sim.mjs   无浏览器仿真测试（赛道/物理/联机逻辑）
 tools/lint.mjs  接线自检（模块、import、DOM id）
+tools/net-check.mjs  真连一次 Supabase，验证实时链路
 ```
 
 ---
@@ -36,8 +37,9 @@ node tools/serve.mjs 5173
 改完代码跑一遍自检（不用开浏览器）：
 
 ```bash
-node tools/sim.mjs    # 赛道确定性、可通过性、物理、联机同步
-node tools/lint.mjs   # 模块能不能加载、import 路径、DOM id 对不对
+node tools/sim.mjs        # 赛道确定性、可通过性、物理、联机同步
+node tools/lint.mjs       # 模块能不能加载、import 路径、DOM id 对不对
+node tools/net-check.mjs  # 真连 Supabase，验证实时链路通不通（需要先填 config.js）
 ```
 
 ---
@@ -69,45 +71,53 @@ node tools/lint.mjs   # 模块能不能加载、import 路径、DOM id 对不对
 
 ### 2. 复制两个值
 
-Project Settings → API：
+Project Settings → **API Keys**（新版在 `Publishable and secret API keys` 标签页）：
 
 - `Project URL`，形如 `https://abcdefgh.supabase.co`
-- `anon` `public` key（很长的那串 JWT）
+- `Publishable key`，形如 `sb_publishable_xxxxxxxx`
+  （老项目里的 `anon` JWT key 也可以，两者权限完全一样）
 
 填进 `config.js`：
 
 ```js
 export const SUPABASE_URL = 'https://abcdefgh.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOi...';
+export const SUPABASE_ANON_KEY = 'sb_publishable_xxxxxxxx';
 ```
 
-### 3. 放行房间频道（重要，否则连上也不通）
+### 3. 不需要建表，也不需要写 RLS 策略
 
-Supabase 的 Realtime 默认要过 RLS。到 **SQL Editor** 执行：
+本项目只用 **public 频道的广播**，不碰 Postgres、不建表、不写策略，建完项目填上 key 就能用。
+这一点是实测确认过的（`node tools/net-check.mjs` 会在没配任何策略的项目上直接跑通）。
 
-```sql
--- 允许匿名用户在一局房间频道里收发广播
-drop policy if exists "pixelrun rooms" on realtime.messages;
-
-create policy "pixelrun rooms"
-on realtime.messages
-for all
-to anon, authenticated
-using ( realtime.topic() like 'pixelrun-%' )
-with check ( realtime.topic() like 'pixelrun-%' );
-```
-
-> 频道名统一是 `pixelrun-<房间码>`，所以这条策略只放开跑酷的房间，不影响你别的业务。
+> 例外：如果你以后想改用**私有频道**（`private: true`），才需要在 SQL Editor 给
+> `realtime.messages` 加 RLS 策略，并在 `src/net.js` 里把 join 的 `private` 改成 `true`。
 
 ### 4. 重新部署
 
 改完 `config.js` 推一次，或者在 Netlify 面板点 Deploys → Trigger deploy。
 页面底部会显示 `Supabase Realtime · 线上联机`，就说明通了。
 
-### 关于 anon key 的安全性
+本地想先确认能不能连，直接跑：
 
-`anon` key 本来就是设计给浏览器公开使用的，放在前端不会泄露任何东西——它只能干 RLS 允许的事。
-**绝对不要**把 `service_role` key 填进前端。
+```bash
+node tools/net-check.mjs
+```
+
+### 关于 key 的安全性
+
+`publishable` key（以及它的前身 `anon` key）本来就是设计给浏览器公开使用的，
+放在前端不会泄露任何东西。**绝对不要**把 `sb_secret_...` 或 `service_role` key 填进前端。
+
+### 手写客户端踩过的坑（改代码前请看）
+
+`src/net.js` 是照着 `@supabase/realtime-js` 的 serializer 逐字节对齐的，三个都不能少：
+
+1. URL 必须带 `vsn=2.0.0`；
+2. 普通事件是 **JSON 数组帧** `[join_ref, ref, topic, event, payload]`；
+3. 广播是 **二进制帧**，且头部必须带上 joinRef 和一个递增 ref（7 字节头 + 各字段 UTF-8 字节）。
+
+少任何一条的表现都一样：**能连上、能 join 成功，但消息全部静默丢失，且不报任何错**。
+另外频道默认是 private，匿名访问必须显式传 `private: false`，否则同样收不到。
 
 ---
 
