@@ -111,10 +111,34 @@
     border-radius:5px;background:rgba(255,255,255,.08);color:#b9c9e8;
   }
   .share{
-    display:flex;gap:8px;align-items:center;padding:9px 12px;border-radius:10px;
+    margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+    padding:10px 12px;border-radius:12px;
     background:rgba(56,232,200,.08);border:1px solid rgba(56,232,200,.25);
-    font-size:12px;color:#9fe8d8;word-break:break-all;
+    font-size:12.5px;color:#9fe8d8;
   }
+  .share[hidden]{display:none}
+  .share-head{white-space:nowrap}
+  .share-head b{color:#eafff9;letter-spacing:1.5px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .share input{
+    flex:1 1 200px;min-width:0;padding:7px 10px;border-radius:8px;font-size:11.5px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;
+    background:rgba(0,0,0,.3);border:1px solid rgba(56,232,200,.22);color:#cfeee7;outline:none;
+  }
+  .share .btn{padding:7px 13px;font-size:12px;white-space:nowrap;flex:0 0 auto}
+
+  .join-fold{border-top:1px solid rgba(255,255,255,.08);padding-top:10px}
+  .join-fold summary{
+    font-size:12px;color:#5f6f8c;cursor:pointer;list-style:none;padding:4px 0;user-select:none;
+  }
+  .join-fold summary::-webkit-details-marker{display:none}
+  .join-fold summary::before{content:'＋ ';color:#6ea8ff}
+  .join-fold[open] summary::before{content:'－ '}
+  .join-fold summary:hover{color:#8b9bb8}
+  .row input{
+    flex:1 1 140px;padding:10px 12px;border-radius:10px;font-size:14px;font-family:inherit;
+    background:rgba(0,0,0,.28);border:1px solid var(--line);color:var(--fg);outline:none;
+  }
+  .row input:focus{border-color:rgba(110,168,255,.6)}
 
   /* ---------- 排行榜 ---------- */
   .board{
@@ -165,7 +189,7 @@
   <div class="hud">
     <div class="stat"><span>SCORE</span><b id="scoreView">0</b></div>
     <div class="stat"><span>BEST</span><b id="bestView">0</b></div>
-    <div class="stat" style="min-width:96px"><span>MODE</span><b id="modeView" style="font-size:14px">单机</b></div>
+    <div class="stat" style="min-width:96px"><span>房间</span><b id="modeView" style="font-size:14px">无</b></div>
     <div class="spacer"></div>
     <button class="btn" id="btnRestart" type="button">重开</button>
     <button class="btn primary" id="btnRace" type="button">多人对战</button>
@@ -183,17 +207,24 @@
       <input id="nickInput" type="text" maxlength="10" placeholder="给自己起个名字" autocomplete="off">
     </div>
 
-    <div class="field">
-      <label for="roomInput">房间码（4 位，输入即加入）</label>
-      <input id="roomInput" type="text" maxlength="6" placeholder="例如 K7Q2" autocomplete="off" spellcheck="false">
-    </div>
-
-    <div class="row">
-      <button class="btn primary" id="btnCreate" type="button">建新房间</button>
-      <button class="btn" id="btnJoin" type="button">加入房间</button>
-    </div>
+    <button class="btn primary" id="btnCreate" type="button">创建房间（房间号自动生成）</button>
 
     <p class="hint" id="panelHint"></p>
+
+    <details class="join-fold">
+      <summary>朋友给我房间号，我要加入</summary>
+      <div class="row" style="margin-top:10px">
+        <input id="roomInput" type="text" maxlength="6" placeholder="输入房间号，如 K7Q2" autocomplete="off" spellcheck="false">
+        <button class="btn" id="btnJoin" type="button">加入</button>
+      </div>
+    </details>
+  </div>
+
+  <!-- 进房后的邀请条 -->
+  <div class="share" id="shareBox" hidden>
+    <span class="share-head">房间 <b id="shareCode">—</b></span>
+    <input id="shareUrl" type="text" readonly>
+    <button class="btn" id="btnCopyShare" type="button">复制邀请链接</button>
   </div>
 
   <!-- 排行榜 -->
@@ -320,12 +351,19 @@ function setNetStatus(s) {
 
 function updateModeView() {
   if (!room) {
-    modeView.textContent = '单机';
+    modeView.textContent = '无';
     return;
   }
   if (netState === 'online') modeView.textContent = room;
   else if (netState === 'error') modeView.textContent = '断线';
   else modeView.textContent = '连接中';
+}
+
+function showShare(code) {
+  const url = location.origin + location.pathname + '?room=' + code;
+  $('shareCode').textContent = code;
+  $('shareUrl').value = url;
+  $('shareBox').hidden = false;
 }
 
 function joinRoom(code) {
@@ -357,6 +395,7 @@ function joinRoom(code) {
   panel.hidden = true;
   boardEl.hidden = false;
   roomInput.value = code;
+  showShare(code);
 
   try { history.replaceState(null, '', '?room=' + code); } catch { /* ignore */ }
 
@@ -380,6 +419,7 @@ function leaveRoom({ silent = false } = {}) {
   netState = 'offline';
   boardEl.hidden = true;
   boardEl.innerHTML = '';
+  $('shareBox').hidden = true;
   $('btnRace').textContent = '多人对战';
   updateModeView();
   if (!silent) {
@@ -502,13 +542,29 @@ $('btnRace').addEventListener('click', () => {
   panel.hidden = false;
   panelHint.className = 'hint';
   panelHint.textContent = cloudMode
-    ? '建一个房间，把房间码或链接发给朋友。'
+    ? '点「创建房间」，房间号自动生成，再把邀请链接发给朋友。'
     : '当前是本地联机模式：用同一个浏览器开多个窗口即可对战。想跨设备联机，请在 config.js 里填 Supabase 配置。';
   nickInput.focus();
   nickInput.select();
 });
 
 $('btnClosePanel').addEventListener('click', () => { panel.hidden = true; });
+
+$('btnCopyShare').addEventListener('click', async () => {
+  const field = $('shareUrl');
+  const btn = $('btnCopyShare');
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(field.value);
+    ok = true;
+  } catch {
+    // 非安全上下文（http）或权限被拒时退化为选中文本
+    field.select();
+    field.setSelectionRange(0, field.value.length);
+  }
+  btn.textContent = ok ? '已复制 ✓' : '已选中，请手动复制';
+  setTimeout(() => { btn.textContent = '复制邀请链接'; }, 1800);
+});
 
 $('btnCreate').addEventListener('click', () => {
   me.name = (nickInput.value.trim() || me.name).slice(0, 10);
