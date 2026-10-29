@@ -17,6 +17,7 @@ tools/serve.mjs 本地预览服务器
 tools/sim.mjs   无浏览器仿真测试（赛道/物理/联机逻辑）
 tools/lint.mjs  接线自检（模块、import、DOM id）
 tools/net-check.mjs  真连一次 Supabase，验证实时链路
+tools/race-check.mjs 端到端跑一遍多人流程（进房/开赛/同步/出局/排名）
 ```
 
 ---
