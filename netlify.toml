@@ -1,0 +1,28 @@
+# Netlify 配置：纯静态站点，不需要构建步骤。
+# 直接把仓库根目录当成发布目录即可。
+
+[build]
+  publish = "."
+
+# 静态资源可以放心缓存，HTML 不缓存（改完立刻生效）
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/src/*"
+  [headers.values]
+    Cache-Control = "public, max-age=600"
+
+[[headers]]
+  for = "/config.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# 基础安全头
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer-when-downgrade"

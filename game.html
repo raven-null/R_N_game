@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>像素跑酷 · 多人对战</title>
+<meta name="description" content="Canvas 像素跑酷，支持实时多人同赛道竞速。">
+<style>
+  :root{
+    --bg:#05060a; --fg:#e8eefc; --muted:#8b9bb8; --line:rgba(255,255,255,.12);
+    --glass:rgba(255,255,255,.055);
+    --c1:#6ea8ff; --c2:#a678ff; --c3:#38e8c8; --warn:#ff7b9c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    min-height:100vh; background:var(--bg); color:var(--fg);
+    background-image:
+      radial-gradient(900px 600px at 12% -10%, rgba(110,168,255,.20), transparent 60%),
+      radial-gradient(800px 600px at 88% 8%, rgba(166,120,255,.16), transparent 60%);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .wrap{max-width:820px;margin:0 auto;padding:26px 18px 60px}
+
+  header{margin-bottom:18px}
+  h1{
+    font-size:clamp(26px,5.4vw,38px);font-weight:800;letter-spacing:-1px;
+    background:linear-gradient(100deg,#fff 10%,var(--c1) 45%,var(--c3) 90%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .sub{margin-top:6px;font-size:13px;color:var(--muted)}
+
+  kbd{
+    display:inline-block;padding:1px 7px;border-radius:5px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    background:rgba(255,255,255,.09);border:1px solid var(--line);color:#cfdcf7;
+  }
+
+  /* ---------- 舞台 ---------- */
+  .stage{
+    position:relative;border-radius:16px;overflow:hidden;
+    border:1px solid rgba(255,255,255,.14);background:#080d1e;
+    box-shadow:0 40px 90px -50px rgba(110,168,255,.9), inset 0 0 0 1px rgba(255,255,255,.03);
+  }
+  canvas{
+    display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges;
+    cursor:pointer;touch-action:manipulation;
+  }
+  .overlay{
+    position:absolute;inset:0;display:grid;place-items:center;text-align:center;
+    background:rgba(5,8,18,.66);backdrop-filter:blur(2px);
+    transition:opacity .22s ease, visibility .22s;
+  }
+  .overlay.hide{opacity:0;visibility:hidden}
+  .overlay .big{
+    display:block;font-size:clamp(20px,4.2vw,30px);font-weight:800;letter-spacing:2px;
+    color:#fff;margin-bottom:8px;
+  }
+  .overlay p{font-size:clamp(12.5px,2.4vw,15px);line-height:1.95;color:#dbe7ff;padding:0 18px}
+  .overlay .dim{display:block;font-size:12px;color:var(--muted);letter-spacing:1px;margin-top:4px}
+
+  /* ---------- 计分 / 操作 ---------- */
+  .hud{
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    margin-top:14px;padding:12px 14px;border-radius:14px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(12px);
+  }
+  .stat{display:flex;flex-direction:column;gap:2px;min-width:64px}
+  .stat span{font-size:10.5px;letter-spacing:1.5px;color:#5f6f8c}
+  .stat b{font-size:19px;font-variant-numeric:tabular-nums;letter-spacing:.5px}
+  .hud .spacer{flex:1}
+  .btn{
+    padding:10px 16px;border-radius:11px;border:1px solid var(--line);background:var(--glass);
+    color:var(--fg);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;
+    transition:transform .16s, box-shadow .16s, border-color .16s, background .16s;
+  }
+  .btn:hover{transform:translateY(-1px);border-color:rgba(110,168,255,.5)}
+  .btn:active{transform:translateY(0)}
+  .btn.primary{
+    background:linear-gradient(120deg,var(--c1),var(--c2));border:0;color:#0a0d16;
+    box-shadow:0 12px 30px -14px rgba(130,140,255,.95);
+  }
+  .btn.ghost{font-weight:500;color:var(--muted)}
+  .btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+  /* ---------- 房间面板 ---------- */
+  .panel{
+    margin-top:12px;padding:16px;border-radius:14px;
+    background:rgba(255,255,255,.04);border:1px solid var(--line);
+    display:grid;gap:12px;
+  }
+  .panel[hidden]{display:none}
+  .panel h2{
+    font-size:14px;font-weight:700;letter-spacing:.5px;color:#cfdcf7;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .field{display:grid;gap:6px}
+  .field label{font-size:11.5px;letter-spacing:1px;color:#5f6f8c}
+  .field input{
+    width:100%;padding:10px 12px;border-radius:10px;font-size:14px;font-family:inherit;
+    background:rgba(0,0,0,.28);border:1px solid var(--line);color:var(--fg);outline:none;
+    transition:border-color .16s;
+  }
+  .field input:focus{border-color:rgba(110,168,255,.6)}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row > *{flex:1 1 120px}
+  .hint{font-size:12px;line-height:1.8;color:var(--muted);word-break:break-all}
+  .hint.warn{color:var(--warn)}
+  .hint code{
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;padding:1px 6px;
+    border-radius:5px;background:rgba(255,255,255,.08);color:#b9c9e8;
+  }
+  .share{
+    display:flex;gap:8px;align-items:center;padding:9px 12px;border-radius:10px;
+    background:rgba(56,232,200,.08);border:1px solid rgba(56,232,200,.25);
+    font-size:12px;color:#9fe8d8;word-break:break-all;
+  }
+
+  /* ---------- 排行榜 ---------- */
+  .board{
+    margin-top:12px;display:grid;gap:6px;padding:12px;border-radius:14px;
+    background:rgba(255,255,255,.035);border:1px solid var(--line);
+  }
+  .board[hidden]{display:none}
+  .peer{
+    display:grid;grid-template-columns:10px minmax(56px,auto) 1fr auto;
+    align-items:center;gap:9px;padding:7px 9px;border-radius:9px;font-size:12.5px;
+    background:rgba(255,255,255,.03);
+  }
+  .peer.me{background:rgba(110,168,255,.14);box-shadow:inset 0 0 0 1px rgba(110,168,255,.3)}
+  .peer.out{opacity:.45}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .pname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cfdcf7}
+  .pbar{height:6px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden}
+  .pbar > i{display:block;height:100%;border-radius:99px;transition:width .12s linear}
+  .pscore{font-variant-numeric:tabular-nums;color:#8b9bb8;min-width:30px;text-align:right}
+
+  /* ---------- 说明 ---------- */
+  .tips{margin-top:20px;display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .tip{
+    padding:13px 15px;border-radius:12px;font-size:12.4px;line-height:1.75;color:var(--muted);
+    background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);
+  }
+  .tip b{color:#cfdcf7;font-weight:600}
+
+  footer{margin-top:34px;text-align:center;font-size:12px;color:#4a5872;line-height:2}
+  footer a{color:#5f7ba8;text-decoration:none}
+  footer a:hover{color:#8fb4ea}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>像素跑酷</h1>
+    <p class="sub"><kbd>空格</kbd> / 点击 / 触屏 起跳 · 躲开地面尖刺 · 同一条赛道，看谁跑得远</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="game" width="320" height="180" role="img" aria-label="像素跑酷游戏画面"></canvas>
+    <div class="overlay" id="overlay"><p id="overlayBody"></p></div>
+  </div>
+
+  <div class="hud">
+    <div class="stat"><span>SCORE</span><b id="scoreView">0</b></div>
+    <div class="stat"><span>BEST</span><b id="bestView">0</b></div>
+    <div class="stat" style="min-width:96px"><span>MODE</span><b id="modeView" style="font-size:14px">单机</b></div>
+    <div class="spacer"></div>
+    <button class="btn" id="btnRestart" type="button">重开</button>
+    <button class="btn primary" id="btnRace" type="button">多人对战</button>
+  </div>
+
+  <!-- 房间面板 -->
+  <div class="panel" id="panel" hidden>
+    <h2>
+      <span>多人对战</span>
+      <button class="btn ghost" id="btnClosePanel" type="button" style="padding:5px 11px;font-size:12px">收起</button>
+    </h2>
+
+    <div class="field">
+      <label for="nickInput">昵称</label>
+      <input id="nickInput" type="text" maxlength="10" placeholder="给自己起个名字" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label for="roomInput">房间码（4 位，输入即加入）</label>
+      <input id="roomInput" type="text" maxlength="6" placeholder="例如 K7Q2" autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="row">
+      <button class="btn primary" id="btnCreate" type="button">建新房间</button>
+      <button class="btn" id="btnJoin" type="button">加入房间</button>
+    </div>
+
+    <p class="hint" id="panelHint"></p>
+  </div>
+
+  <!-- 排行榜 -->
+  <div class="board" id="board" hidden></div>
+
+  <p class="sr-only" id="live" aria-live="polite"></p>
+
+  <div class="tips">
+    <div class="tip"><b>怎么玩</b><br>空格 / 点击 / 触屏起跳，躲开地面尖刺。速度会越来越快，撞上就出局。</div>
+    <div class="tip"><b>多人怎么赛</b><br>进同一个房间后一起倒计时起跑，赛道完全一样，谁跑得远谁赢。实时进度条就在下面。</div>
+    <div class="tip"><b>技术实现</b><br>Canvas 2D，画布只有 320×180，靠 CSS 放大，所以每个像素都是硬的。赛道由房间种子确定性生成，纯静态托管。</div>
+  </div>
+
+  <footer>
+    <span id="netBadge">—</span> · Canvas 像素跑酷 · 零依赖
+  </footer>
+</div>
+
+<script type="module">
+import { createGame, RUNNING, DEAD, READY } from './src/game.js';
+import { createNet, supabaseConfigured } from './src/net.js';
+import { createRace } from './src/race.js';
+import { makeSeedString, makeId, makeRoomCode } from './src/rng.js';
+
+const $ = (id) => document.getElementById(id);
+
+const canvas   = $('game');
+const overlay  = $('overlay');
+const overlayBody = $('overlayBody');
+const panel    = $('panel');
+const panelHint = $('panelHint');
+const boardEl  = $('board');
+const scoreView = $('scoreView');
+const bestView  = $('bestView');
+const modeView  = $('modeView');
+const netBadge  = $('netBadge');
+const live      = $('live');
+const nickInput = $('nickInput');
+const roomInput = $('roomInput');
+
+// ---------------- 本地存档 ----------------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, String(v)); } catch { /* 隐私模式忽略 */ } },
+};
+
+let best = Number(store.get('pixelrun.best', 0)) || 0;
+bestView.textContent = String(best);
+
+const me = {
+  id: makeId(),
+  name: store.get('pixelrun.name', '') || ('玩家' + Math.floor(Math.random() * 90 + 10)),
+  color: null,
+};
+nickInput.value = me.name;
+
+// ---------------- 游戏 ----------------
+const game = createGame(canvas);
+
+let race = null;        // 房间逻辑
+let net = null;         // 传输层
+let room = null;        // 当前房间码
+let netState = 'offline';
+let selfDead = false;
+
+const cloudMode = supabaseConfigured();
+netBadge.textContent = cloudMode
+  ? 'Supabase Realtime · 线上联机'
+  : '本地联机（BroadcastChannel）· 未配置 Supabase';
+
+// ---------------- 覆盖层 ----------------
+function showOverlay(html) {
+  overlayBody.innerHTML = html;
+  overlay.classList.remove('hide');
+}
+function hideOverlay() {
+  overlay.classList.add('hide');
+}
+
+function readyOverlay() {
+  showOverlay(
+    '<span class="big">READY?</span>' +
+    '按 <kbd>空格</kbd> 或 点击画面开始' +
+    '<span class="dim">最高分 ' + best + '</span>'
+  );
+}
+
+function deadOverlay(score) {
+  const rank = currentRank();
+  const rankLine = rank ? (' · 本局第 <b>' + rank + '</b> 名') : '';
+  showOverlay(
+    '<span class="big">GAME OVER</span>' +
+    '本局得分 <b>' + score + '</b>' + rankLine +
+    '<span class="dim">' + (race ? '按空格再来一局 · 等其他人跑完' : '按 <kbd>空格</kbd> 或 点击 再来一局') + '</span>'
+  );
+}
+
+// ---------------- 单机 ----------------
+function startSolo() {
+  leaveRoom({ silent: true });
+  selfDead = false;
+  game.start(makeSeedString());
+  hideOverlay();
+  live.textContent = '开始跑酷';
+}
+
+// ---------------- 多人 ----------------
+function setNetStatus(s) {
+  netState = s;
+  if (s === 'online') {
+    panelHint.className = 'hint';
+    panelHint.textContent = cloudMode
+      ? '已连上实时服务，把房间码发给朋友即可。'
+      : '本地联机已就绪：在同一浏览器再开一个窗口，用相同房间码加入即可对战。';
+  } else if (s === 'connecting' || s === 'reconnecting') {
+    panelHint.className = 'hint';
+    panelHint.textContent = s === 'connecting' ? '正在连接实时服务…' : '连接断开，正在重连…';
+  } else if (s === 'error') {
+    panelHint.className = 'hint warn';
+    panelHint.textContent = '连接失败。检查 Supabase 的 URL / anon key 是否填对，以及 Realtime 是否已启用。';
+  }
+  updateModeView();
+}
+
+function updateModeView() {
+  if (!room) {
+    modeView.textContent = '单机';
+    return;
+  }
+  if (netState === 'online') modeView.textContent = room;
+  else if (netState === 'error') modeView.textContent = '断线';
+  else modeView.textContent = '连接中';
+}
+
+function joinRoom(code) {
+  code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  if (code.length < 3) {
+    panelHint.className = 'hint warn';
+    panelHint.textContent = '房间码至少 3 位。';
+    return;
+  }
+  leaveRoom({ silent: true });
+  room = code;
+  selfDead = false;
+
+  net = createNet({
+    topic: 'pixelrun-' + code,
+    peerId: me.id,
+    onMessage: (m) => race?.handle(m),
+    onStatus: setNetStatus,
+  });
+
+  race = createRace({
+    net,
+    me,
+    onPeers: renderBoard,
+    onEvent: onRaceEvent,
+  });
+  race.join();
+
+  panel.hidden = true;
+  boardEl.hidden = false;
+  roomInput.value = code;
+
+  try { history.replaceState(null, '', '?room=' + code); } catch { /* ignore */ }
+
+  modeView.textContent = '连接中';
+  updateModeView();
+  showOverlay(
+    '<span class="big">房间 ' + code + '</span>' +
+    '等人进来，然后点「开始比赛」' +
+    '<span class="dim">同一浏览器多开窗口可用同一个房间码互测</span>'
+  );
+  $('btnRace').textContent = '开始比赛';
+}
+
+function leaveRoom({ silent = false } = {}) {
+  if (race) {
+    try { race.leave(); } catch { /* ignore */ }
+  }
+  race = null;
+  net = null;
+  room = null;
+  netState = 'offline';
+  boardEl.hidden = true;
+  boardEl.innerHTML = '';
+  $('btnRace').textContent = '多人对战';
+  updateModeView();
+  if (!silent) {
+    try { history.replaceState(null, '', location.pathname); } catch { /* ignore */ }
+    readyOverlay();
+  }
+}
+
+function onRaceEvent(type, data) {
+  if (type !== 'start') return;
+  selfDead = false;
+  hideOverlay();
+  game.startRace({ seed: data.seed, target: data.target || 0, countdownMs: 2600 });
+  live.textContent = '比赛开始';
+}
+
+// ---------------- 排行榜 ----------------
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderBoard(peers) {
+  if (!room || !peers || peers.length === 0) {
+    boardEl.innerHTML = '';
+    return;
+  }
+  const top = Math.max(1, ...peers.map((p) => p.score));
+  boardEl.innerHTML = peers.map((p) => {
+    const w = Math.min(100, (p.score / top) * 100);
+    const cls = 'peer' + (p.isMe ? ' me' : '') + (p.alive ? '' : ' out');
+    const tail = p.isMe ? ' (你)' : '';
+    return '<div class="' + cls + '">' +
+      '<span class="dot" style="background:' + p.color + '"></span>' +
+      '<span class="pname">' + esc(p.name) + tail + '</span>' +
+      '<span class="pbar"><i style="width:' + w.toFixed(1) + '%;background:' + p.color + '"></i></span>' +
+      '<span class="pscore">' + p.score + '</span>' +
+      '</div>';
+  }).join('');
+}
+
+function currentRank() {
+  if (!race) return 0;
+  const peers = race.peers;
+  const mine = peers.find((p) => p.isMe);
+  return mine ? mine.rank : 0;
+}
+
+// ---------------- 游戏事件 ----------------
+game.on('score', (s) => {
+  scoreView.textContent = String(s);
+  if (s > best) {
+    best = s;
+    bestView.textContent = String(best);
+    store.set('pixelrun.best', best);
+  }
+  if (race) race.updateLocal({ dist: game.dist, score: s, alive: true });
+  if (s > 0 && s % 50 === 0) live.textContent = '得分 ' + s;
+});
+
+game.on('death', ({ score, dist }) => {
+  if (score > best) {
+    best = score;
+    bestView.textContent = String(best);
+    store.set('pixelrun.best', best);
+  }
+  selfDead = true;
+  if (race) race.sendDead({ dist, score });
+  deadOverlay(score);
+});
+
+game.on('finish', ({ score, dist }) => {
+  if (race) race.sendFinish({ dist, score });
+});
+
+// ---------------- 输入 ----------------
+function doJump() {
+  if (game.state === READY) {
+    // 多人等待厅里不因为误触画面就开赛，必须点「开始比赛」
+    if (race) return;
+    startSolo();
+    return;
+  }
+  if (game.state === DEAD) {
+    if (race) {
+      if (!selfDead) return;
+      race.startMatch({ target: 0 });
+    } else {
+      startSolo();
+    }
+    return;
+  }
+  game.jump();
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return;
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+    e.preventDefault();
+    doJump();
+  }
+}, { passive: false });
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  doJump();
+});
+
+// ---------------- 按钮 ----------------
+$('btnRestart').addEventListener('click', () => {
+  if (race) race.startMatch({ target: 0 });
+  else startSolo();
+});
+
+$('btnRace').addEventListener('click', () => {
+  if (race) {
+    race.startMatch({ target: 0 });
+    hideOverlay();
+    return;
+  }
+  panel.hidden = false;
+  panelHint.className = 'hint';
+  panelHint.textContent = cloudMode
+    ? '建一个房间，把房间码或链接发给朋友。'
+    : '当前是本地联机模式：用同一个浏览器开多个窗口即可对战。想跨设备联机，请在 config.js 里填 Supabase 配置。';
+  nickInput.focus();
+  nickInput.select();
+});
+
+$('btnClosePanel').addEventListener('click', () => { panel.hidden = true; });
+
+$('btnCreate').addEventListener('click', () => {
+  me.name = (nickInput.value.trim() || me.name).slice(0, 10);
+  store.set('pixelrun.name', me.name);
+  joinRoom(makeRoomCode(4));
+});
+
+$('btnJoin').addEventListener('click', () => {
+  me.name = (nickInput.value.trim() || me.name).slice(0, 10);
+  store.set('pixelrun.name', me.name);
+  const code = roomInput.value.trim();
+  if (!code) {
+    panelHint.className = 'hint warn';
+    panelHint.textContent = '先输入房间码，或者点「建新房间」。';
+    return;
+  }
+  joinRoom(code);
+});
+
+roomInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('btnJoin').click();
+});
+
+window.addEventListener('beforeunload', () => {
+  if (race) { try { race.leave(); } catch { /* ignore */ } }
+});
+
+// ---------------- 主循环 ----------------
+function loop(t) {
+  game.frame(t);
+  if (game.state === RUNNING && race) {
+    race.updateLocal({ dist: game.dist, score: game.score, alive: true });
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---------------- 启动 ----------------
+function boot() {
+  const params = new URLSearchParams(location.search);
+  const wanted = params.get('room');
+  if (wanted && wanted.length >= 3) {
+    panel.hidden = true;
+    joinRoom(wanted);
+  } else {
+    readyOverlay();
+    if (params.get('lobby') === '1') $('btnRace').click();
+  }
+  requestAnimationFrame(loop);
+}
+
+boot();
+</script>
+</body>
+</html>

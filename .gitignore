@@ -1,0 +1,15 @@
+# 依赖与构建产物（本项目零依赖零构建，列着以防万一）
+node_modules/
+dist/
+
+# 本地预览时生成的临时目录 / 浏览器 profile
+.tmp/
+chrome*/
+*.log
+
+# 编辑器 & 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

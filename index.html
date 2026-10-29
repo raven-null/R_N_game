@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>像素跑酷</title>
+<meta name="description" content="Canvas 像素跑酷小游戏，支持实时多人同赛道竞速。">
+<style>
+  :root{ --bg:#05060a; --fg:#e8eefc; --muted:#8b9bb8; --line:rgba(255,255,255,.12); --glass:rgba(255,255,255,.055); --c1:#6ea8ff; --c2:#a678ff; --c3:#38e8c8; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    min-height:100vh;display:grid;place-items:center;padding:28px 18px;
+    background:var(--bg);color:var(--fg);
+    background-image:
+      radial-gradient(900px 600px at 12% -10%, rgba(110,168,255,.20), transparent 60%),
+      radial-gradient(800px 600px at 88% 10%, rgba(166,120,255,.16), transparent 60%);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .card{max-width:560px;width:100%;text-align:center}
+  h1{
+    font-size:clamp(34px,8vw,54px);font-weight:800;letter-spacing:-1.5px;margin-bottom:12px;
+    background:linear-gradient(100deg,#fff 10%,var(--c1) 45%,var(--c3) 90%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  p.lead{font-size:14px;line-height:1.9;color:var(--muted);margin-bottom:26px}
+  .actions{display:grid;gap:12px;grid-template-columns:1fr 1fr;margin-bottom:26px}
+  .btn{
+    display:block;padding:15px 18px;border-radius:13px;border:1px solid var(--line);
+    background:var(--glass);color:var(--fg);font-size:14.5px;font-weight:600;
+    text-decoration:none;transition:transform .18s, border-color .18s, box-shadow .18s;
+  }
+  .btn:hover{transform:translateY(-2px);border-color:rgba(110,168,255,.5)}
+  .btn.primary{
+    background:linear-gradient(120deg,var(--c1),var(--c2));border:0;color:#0a0d16;
+    box-shadow:0 16px 36px -18px rgba(130,140,255,.95);
+  }
+  .btn small{display:block;font-size:11.5px;font-weight:500;opacity:.72;margin-top:3px}
+  .meta{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));text-align:left}
+  .meta div{padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);font-size:12.2px;line-height:1.7;color:var(--muted)}
+  .meta b{display:block;color:#cfdcf7;font-size:13px;margin-bottom:3px}
+  footer{margin-top:30px;font-size:11.5px;color:#4a5872;line-height:1.9}
+  @media (max-width:420px){ .actions{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>像素跑酷</h1>
+    <p class="lead">一个 320×180 的 Canvas 像素跑酷小游戏。<br>躲开尖刺往前跑，同一条赛道比谁跑得远。</p>
+
+    <div class="actions">
+      <a class="btn primary" href="game.html">开始游戏<small>单机无限跑</small></a>
+      <a class="btn" href="game.html" id="raceBtn">多人对战<small>开房间实时竞速</small></a>
+    </div>
+
+    <div class="meta">
+      <div><b>零依赖</b>纯静态文件，Canvas 手绘像素，没有框架也没有图片素材。</div>
+      <div><b>确定性赛道</b>同一房间同一种子，所有人跑的是同一条路。</div>
+      <div><b>实时同步</b>进度条实时更新，谁在前面一目了然。</div>
+    </div>
+
+    <footer>空格 / 点击 / 触屏起跳 · 无需安装</footer>
+  </div>
+
+<script>
+  // 首页的「多人对战」按钮：直接把用户带进 game.html 并展开房间面板
+  document.getElementById('raceBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    location.href = 'game.html?lobby=1';
+  });
+</script>
+</body>
+</html>
