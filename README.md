@@ -1,23 +1,30 @@
-# 像素跑酷 · 多人对战
+# 游戏厅 · 小游戏合集
 
-一个 320×180 的 Canvas 像素跑酷小游戏。纯静态文件，零依赖、零构建，可以直接扔到 Netlify。
+纯静态小游戏站点，零依赖、零构建，可以直接扔到 Netlify。
+每个游戏住在 `games/<id>/` 里自成一体；主页 `index.html` 读 `games/registry.js` 自动列出所有游戏。
+
+**第一个游戏：像素跑酷** —— 一个 320×180 的 Canvas 像素跑酷小游戏。
 支持**实时多人同赛道竞速**：进同一个房间，一起倒计时起跑，赛道完全一致，比谁跑得远。
 
 ```
-index.html      首页
-game.html       游戏页（单机 + 多人一体）
-config.js       线上联机配置（Supabase）
+index.html      游戏大厅主页（读注册表渲染游戏卡片）
 netlify.toml    Netlify 发布配置
-src/rng.js      种子随机 / 房间码
-src/track.js    确定性赛道生成
-src/game.js     物理 + 碰撞 + 像素渲染
-src/net.js      实时传输层（本地 BroadcastChannel / Supabase Realtime）
-src/race.js     房间逻辑：成员、进度、开局、掉线清理
-tools/serve.mjs 本地预览服务器
-tools/sim.mjs   无浏览器仿真测试（赛道/物理/联机逻辑）
-tools/lint.mjs  接线自检（模块、import、DOM id）
-tools/net-check.mjs  真连一次 Supabase，验证实时链路
-tools/race-check.mjs 端到端跑一遍多人流程（进房/开赛/同步/出局/排名）
+games/
+  registry.js            游戏注册表（加新游戏只改这一个文件）
+  pixel-parkour/         像素跑酷（第一个游戏）
+    game.html            游戏页（单机 + 多人一体）
+    config.js            线上联机配置（Supabase）
+    src/rng.js           种子随机 / 房间码
+    src/track.js         确定性赛道生成
+    src/game.js          物理 + 碰撞 + 像素渲染
+    src/net.js           实时传输层（本地 BroadcastChannel / Supabase Realtime）
+    src/race.js          房间逻辑：成员、进度、开局、掉线清理
+    tools/sim.mjs        无浏览器仿真测试（赛道/物理/联机逻辑）
+    tools/net-check.mjs  真连一次 Supabase，验证实时链路
+    tools/race-check.mjs 端到端跑一遍多人流程（进房/开赛/同步/出局/排名）
+tools/
+  serve.mjs              本地预览服务器
+  lint.mjs               接线自检（自动扫描 games/ 下所有游戏）
 ```
 
 ---
@@ -38,9 +45,9 @@ node tools/serve.mjs 5173
 改完代码跑一遍自检（不用开浏览器）：
 
 ```bash
-node tools/sim.mjs        # 赛道确定性、可通过性、物理、联机同步
-node tools/lint.mjs       # 模块能不能加载、import 路径、DOM id 对不对
-node tools/net-check.mjs  # 真连 Supabase，验证实时链路通不通（需要先填 config.js）
+node games/pixel-parkour/tools/sim.mjs        # 赛道确定性、可通过性、物理、联机同步
+node tools/lint.mjs                           # 模块、import 路径、DOM id、游戏注册表
+node games/pixel-parkour/tools/net-check.mjs  # 真连 Supabase，验证实时链路（需要先填 config.js）
 ```
 
 ---
@@ -78,7 +85,7 @@ Project Settings → **API Keys**（新版在 `Publishable and secret API keys` 
 - `Publishable key`，形如 `sb_publishable_xxxxxxxx`
   （老项目里的 `anon` JWT key 也可以，两者权限完全一样）
 
-填进 `config.js`：
+填进 `games/pixel-parkour/config.js`：
 
 ```js
 export const SUPABASE_URL = 'https://abcdefgh.supabase.co';
@@ -88,10 +95,10 @@ export const SUPABASE_ANON_KEY = 'sb_publishable_xxxxxxxx';
 ### 3. 不需要建表，也不需要写 RLS 策略
 
 本项目只用 **public 频道的广播**，不碰 Postgres、不建表、不写策略，建完项目填上 key 就能用。
-这一点是实测确认过的（`node tools/net-check.mjs` 会在没配任何策略的项目上直接跑通）。
+这一点是实测确认过的（`node games/pixel-parkour/tools/net-check.mjs` 会在没配任何策略的项目上直接跑通）。
 
 > 例外：如果你以后想改用**私有频道**（`private: true`），才需要在 SQL Editor 给
-> `realtime.messages` 加 RLS 策略，并在 `src/net.js` 里把 join 的 `private` 改成 `true`。
+> `realtime.messages` 加 RLS 策略，并在 `games/pixel-parkour/src/net.js` 里把 join 的 `private` 改成 `true`。
 
 ### 4. 重新部署
 
@@ -101,7 +108,7 @@ export const SUPABASE_ANON_KEY = 'sb_publishable_xxxxxxxx';
 本地想先确认能不能连，直接跑：
 
 ```bash
-node tools/net-check.mjs
+node games/pixel-parkour/tools/net-check.mjs
 ```
 
 ### 关于 key 的安全性
@@ -111,7 +118,7 @@ node tools/net-check.mjs
 
 ### 手写客户端踩过的坑（改代码前请看）
 
-`src/net.js` 是照着 `@supabase/realtime-js` 的 serializer 逐字节对齐的，三个都不能少：
+`games/pixel-parkour/src/net.js` 是照着 `@supabase/realtime-js` 的 serializer 逐字节对齐的，三个都不能少：
 
 1. URL 必须带 `vsn=2.0.0`；
 2. 普通事件是 **JSON 数组帧** `[join_ref, ref, topic, event, payload]`；
@@ -125,7 +132,7 @@ node tools/net-check.mjs
 ## 四、怎么玩多人
 
 1. 打开页面 → 点「多人对战」→ 输昵称 → 点「建新房间」，拿到 4 位房间码。
-2. 把链接 `https://你的站点.netlify.app/game.html?room=K7Q2` 发给朋友，打开就自动进房。
+2. 把链接 `https://你的站点.netlify.app/games/pixel-parkour/game.html?room=K7Q2` 发给朋友，打开就自动进房。
 3. 房内任何人点「开始比赛」都会触发全场倒计时，3-2-1 后同时起跑。
 4. 下面的排行榜实时刷新每个人的进度，撞到尖刺就出局，最后比分数。
 
@@ -138,7 +145,7 @@ node tools/net-check.mjs
 跑酷类的多人对战最容易翻车的地方是「每台机器随机出不一样的障碍物」。这里的处理：
 
 - 房间种子由发起方生成，随 `start` 消息广播给所有人；
-- `src/track.js` 用 `mulberry32(seed)` 预生成整条障碍物序列，以**世界坐标**记录；
+- `games/pixel-parkour/src/track.js` 用 `mulberry32(seed)` 预生成整条障碍物序列，以**世界坐标**记录；
 - 相机位置就是「已行进距离」，速度只是距离的纯函数 `speed = 110 + dist × 0.042`；
 - 物理跑**固定 1/120 秒步长**，和帧率无关。
 
@@ -151,10 +158,26 @@ node tools/net-check.mjs
 
 | 想改 | 去哪改 |
 | --- | --- |
-| 速度、难度曲线 | `src/track.js` 里的 `BASE_SPEED` / `MAX_SPEED` / `SPEED_GAIN` |
-| 障碍物间距和高度 | `src/track.js` 里的 `HEIGHTS` / `GAP_MIN` / `GAP_RANGE` |
-| 重力、弹跳力 | `src/game.js` 里的 `GRAVITY` / `JUMP_V` |
-| 配色 | `src/game.js` 顶部的 `C` 对象 |
-| 房间人数上限 | `src/race.js` 里的 `MAX_PLAYERS` |
-| 进度同步频率 | `src/race.js` 里的 `POS_INTERVAL`（默认 120ms） |
-| 加"跑到 X 分就赢" | `src/game.js` 已支持 `target`；把 `game.html` 里 `race.startMatch({ target: 0 })` 的 0 改成 300 即可 |
+| 速度、难度曲线 | `games/pixel-parkour/src/track.js` 里的 `BASE_SPEED` / `MAX_SPEED` / `SPEED_GAIN` |
+| 障碍物间距和高度 | `games/pixel-parkour/src/track.js` 里的 `HEIGHTS` / `GAP_MIN` / `GAP_RANGE` |
+| 重力、弹跳力 | `games/pixel-parkour/src/game.js` 里的 `GRAVITY` / `JUMP_V` |
+| 配色 | `games/pixel-parkour/src/game.js` 顶部的 `C` 对象 |
+| 房间人数上限 | `games/pixel-parkour/src/race.js` 里的 `MAX_PLAYERS` |
+| 进度同步频率 | `games/pixel-parkour/src/race.js` 里的 `POS_INTERVAL_RACE`（默认 90ms） |
+| 加"跑到 X 分就赢" | `games/pixel-parkour/src/game.js` 已支持 `target`；把 `games/pixel-parkour/game.html` 里 `race.startMatch({ target: 0 })` 的 0 改成 300 即可 |
+
+---
+
+## 七、怎么加一个新游戏
+
+站点没有任何构建步骤，加游戏就是加文件：
+
+1. **建目录**：把游戏整体放进 `games/你的游戏名/`，入口叫 `game.html`，
+   脚本、素材、配置都放在这个目录里（参考 `games/pixel-parkour/` 的摆法）。
+2. **登记**：打开 `games/registry.js`，照着示例加一条——标题、简介、入口路径、
+   人数、操作、标签、封面配色。主页会自动多出一张卡片。
+3. **自检**：跑 `node tools/lint.mjs`，它会自动发现新目录，核对模块加载、
+   import 路径、DOM id、注册表字段，全绿就说明接好了。
+
+游戏专属的测试脚本（仿真、联机检查等）放在 `games/<id>/tools/` 里跟随游戏走；
+`tools/` 根目录只留站点级的 `serve.mjs` 和 `lint.mjs`。

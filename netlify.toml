@@ -11,14 +11,27 @@
     Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
-  for = "/src/*"
+  for = "/games/*/src/*"
   [headers.values]
     Cache-Control = "public, max-age=600"
 
+# 游戏注册表不缓存：加新游戏后主页立刻能看到
 [[headers]]
-  for = "/config.js"
+  for = "/games/registry.js"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
+# 联机配置不缓存：换 Supabase 项目后立刻生效
+[[headers]]
+  for = "/games/*/config.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# 旧链接兼容：改造前发出的邀请链接（/game.html?room=XXXX）继续能打开，query 原样保留
+[[redirects]]
+  from = "/game.html"
+  to = "/games/pixel-parkour/game.html"
+  status = 301
 
 # 基础安全头
 [[headers]]
